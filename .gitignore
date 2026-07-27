@@ -1,0 +1,25 @@
+# Bytecode / cache de Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Entornos virtuales
+venv/
+.venv/
+env/
+ENV/
+
+# Base de datos generada por la herramienta (incluye archivos
+# auxiliares de SQLite en modo WAL)
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Editores / IDE
+.vscode/
+.idea/
+
+# Archivos del sistema operativo
+.DS_Store
+Thumbs.db

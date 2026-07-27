@@ -2,8 +2,6 @@
 
 A command-line tool that scans your local music library and downloads synchronized lyrics (`.lrc`) for each track, using the public database from [lrclib.net](https://lrclib.net).
 
-<!-- ![LocalLyricsSync](docs/images/banner.png) -->
-
 ## Description
 
 LocalLyricsSync walks through a folder of your music, reads each file's metadata (artist, title, album, duration), and looks up its synchronized lyrics on lrclib.net. When a match is found, it saves an `.lrc` file next to the track, ready for any compatible player to display in real time.
@@ -19,7 +17,11 @@ The whole process runs in parallel and keeps a local record of what has already 
 - Per-file error handling: if one track fails (corrupted metadata, network error, etc.) it does not interrupt the rest of the process
 
 <!-- ![LocalLyricsSync running](docs/images/demo.png) -->
-
+<br>
+<div align="center">
+<img src="docs/resources/Screenshot_2.png" width="80%" />
+<img src="docs/resources/Screenshot_1.png" width="80%" />
+</div>
 ## Requirements
 
 - Python 3.9 or higher

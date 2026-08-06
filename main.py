@@ -10,7 +10,20 @@ from concurrent.futures import as_completed
 
 from tqdm import tqdm
 
+from pathlib import Path
 import requests
+import sys
+
+
+STATUS_LABELS = {
+    "found": "Lyrics downloaded",
+    "not_found": "No synchronized lyrics found",
+    "error_metadata": "Metadata read errors",
+    "no_metadata": "Files without compatible metadata",
+    "error_network": "Network errors",
+    "error_write": "File write errors",
+    "error_unexpected": "Unexpected errors"
+}
 
 
 def process(song, db, force):
@@ -51,32 +64,119 @@ def process(song, db, force):
     return song, status, None
 
 
-args = get_args()
+def show_header(library, total):
+    print()
+    print("LocalLyricsSync")
+    print("=" * 50)
+    print(f"Library: {library}")
+    print(f"Compatible songs found: {total}")
 
-db = Database(args.db)
 
-songs = scan_library(args.library)
+def show_plan(songs, statuses, force):
+    new_count = sum(statuses[song] is None for song in songs)
+    cached_count = sum(statuses[song] == "found" for song in songs)
+    retry_count = len(songs) - new_count - cached_count
 
-results = {}
+    if force:
+        print(f"Force mode: {len(songs)} songs will be processed again.")
+        return songs, cached_count
 
-with ThreadPoolExecutor(max_workers=args.threads) as executor:
+    pending = [song for song in songs if statuses[song] != "found"]
 
-    futures = {
-        executor.submit(process, song, db, args.force): song
-        for song in songs
-    }
+    if not statuses or all(status is None for status in statuses.values()):
+        print(f"First run: {len(pending)} songs will be processed.")
+        return pending, cached_count
 
-    for future in tqdm(as_completed(futures), total=len(futures)):
-        song = futures[future]
-        try:
-            _, status, error = future.result()
-        except Exception as e:
-            status, error = "error_unexpected", str(e)
+    print(f"Already processed: {cached_count}")
+    print(f"New songs: {new_count}")
+    if retry_count:
+        print(f"Previous searches to retry: {retry_count}")
+    print(f"Songs to process now: {len(pending)}")
+    return pending, cached_count
 
-        results[status] = results.get(status, 0) + 1
-        if error:
-            tqdm.write(f"[{status}] {song}: {error}")
 
-print()
-for status, count in sorted(results.items()):
-    print(f"{status}: {count}")
+def show_summary(results, cached_count):
+    print()
+    print("Summary")
+    print("-" * 50)
+    if cached_count:
+        print(f"Already up to date: {cached_count}")
+    for status, label in STATUS_LABELS.items():
+        count = results.get(status, 0)
+        if count:
+            print(f"{label}: {count}")
+
+
+def main():
+    args = get_args()
+    library = Path(args.library).expanduser()
+
+    if not library.exists():
+        print(f"Music folder not found: {library}")
+        return 1
+
+    if not library.is_dir():
+        print(f"The provided path is not a folder: {library}")
+        return 1
+
+    db = Database(args.db)
+    songs = scan_library(library)
+    statuses = {song: db.get_status(song) for song in songs}
+
+    show_header(library.resolve(), len(songs))
+
+    if not songs:
+        print("No compatible audio files were found in this folder.")
+        return 0
+
+    pending, cached_count = show_plan(songs, statuses, args.force)
+
+    if not pending:
+        print()
+        print("Your library is up to date. There are no new songs to process.")
+        return 0
+
+    results = {}
+
+    print()
+    with ThreadPoolExecutor(max_workers=args.threads) as executor:
+        futures = {
+            executor.submit(process, song, db, args.force): song
+            for song in pending
+        }
+
+        with tqdm(
+            as_completed(futures),
+            total=len(futures),
+            desc="Searching for lyrics",
+            unit="song",
+            dynamic_ncols=True
+        ) as progress:
+            for future in progress:
+                song = futures[future]
+                try:
+                    _, status, error = future.result()
+                except Exception as e:
+                    status, error = "error_unexpected", str(e)
+
+                results[status] = results.get(status, 0) + 1
+                errors = sum(
+                    count for result, count in results.items()
+                    if result.startswith("error")
+                )
+                progress.set_postfix(
+                    downloaded=results.get("found", 0),
+                    not_found=results.get("not_found", 0),
+                    errors=errors
+                )
+
+                if error:
+                    label = STATUS_LABELS.get(status, status)
+                    tqdm.write(f"{label} for '{song}': {error}")
+
+    show_summary(results, 0 if args.force else cached_count)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
